@@ -1,0 +1,176 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  ADMIN
+  VENDEDOR
+  SUPERVISOR
+}
+
+enum DocumentType {
+  BOLETA
+  FACTURA
+  CONTROL_INTERNO
+}
+
+enum SaleStatus {
+  COMPLETADA
+  ANULADA
+  PENDIENTE_SUNAT
+}
+
+model User {
+  id           Int       @id @default(autoincrement())
+  username     String    @unique
+  passwordHash String
+  nombre       String
+  email        String    @unique
+  role         UserRole  @default(VENDEDOR)
+  store        Store?    @relation(fields: [storeId], references: [id])
+  storeId      Int?
+  status       Boolean   @default(true)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  sales       Sale[]
+  voids       SaleVoid[]
+  auditLogs   AuditLog[]
+}
+
+model Store {
+  id        Int        @id @default(autoincrement())
+  nombre    String     @unique
+  direccion String?
+  ruc       String?
+  contacto  String?
+  timezone  String?
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+
+  users   User[]
+  stocks  ProductStock[]
+  sales   Sale[]
+}
+
+model Category {
+  id        Int        @id @default(autoincrement())
+  nombre    String     @unique
+  parentId  Int?
+  parent    Category?  @relation("CategoryHierarchy", fields: [parentId], references: [id])
+  children  Category[] @relation("CategoryHierarchy")
+  products  Product[]
+}
+
+model Product {
+  id           Int            @id @default(autoincrement())
+  sku          String         @unique
+  nombre       String
+  descripcion  String?
+  precioVenta  Decimal        @db.Decimal(10,2)
+  costo        Decimal        @db.Decimal(10,2)
+  codigoBarra  String?        @unique
+  unidadMedida String?
+  imagenUrl    String?
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+
+  categoriaId Int?
+  categoria   Category?       @relation(fields: [categoriaId], references: [id])
+
+  stocks      ProductStock[]
+  saleItems   SaleItem[]
+}
+
+model ProductStock {
+  id          Int      @id @default(autoincrement())
+  product     Product  @relation(fields: [productId], references: [id])
+  productId   Int
+  store       Store    @relation(fields: [storeId], references: [id])
+  storeId     Int
+  cantidad    Int      @default(0)
+  stockMinimo Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([productId, storeId])
+}
+
+model Sale {
+  id             Int           @id @default(autoincrement())
+  tienda         Store         @relation(fields: [tiendaId], references: [id])
+  tiendaId       Int
+  user           User          @relation(fields: [userId], references: [id])
+  userId         Int
+  tipoDocumento  DocumentType
+  total          Decimal       @db.Decimal(12,2)
+  subTotal       Decimal       @db.Decimal(12,2)
+  impuestos      Decimal       @db.Decimal(12,2)
+  estado         SaleStatus    @default(COMPLETADA)
+  fecha          DateTime      @default(now())
+  paymentMethod  String
+  referenciaPago String?
+  offlineUUID    String?       @unique
+  fromOffline    Boolean       @default(false)
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  items    SaleItem[]
+  voids    SaleVoid[]
+  invoices InvoiceSunat[]
+}
+
+model SaleItem {
+  id             Int      @id @default(autoincrement())
+  sale           Sale     @relation(fields: [saleId], references: [id])
+  saleId         Int
+  product        Product  @relation(fields: [productId], references: [id])
+  productId      Int
+  cantidad       Int
+  precioUnitario Decimal  @db.Decimal(10,2)
+  descuento      Decimal  @db.Decimal(10,2)
+  subtotal       Decimal  @db.Decimal(12,2)
+}
+
+model SaleVoid {
+  id      Int      @id @default(autoincrement())
+  sale    Sale     @relation(fields: [saleId], references: [id])
+  saleId  Int
+
+  user    User     @relation(fields: [userId], references: [id])
+  userId  Int
+
+  motivo  String
+  fecha   DateTime @default(now())
+}
+
+model InvoiceSunat {
+  id          Int       @id @default(autoincrement())
+  sale        Sale      @relation(fields: [saleId], references: [id])
+  saleId      Int
+  statusSunat String
+  ticket      String?
+  cdr         String?
+  sentAt      DateTime?
+  response    String?
+}
+
+model AuditLog {
+  id      Int      @id @default(autoincrement())
+  user    User?    @relation(fields: [userId], references: [id])
+  userId  Int?
+  accion  String
+  detalle String?
+  ip      String?
+  fecha   DateTime @default(now())
+}
+
+model Setting {
+  clave String @id
+  valor String
+}
